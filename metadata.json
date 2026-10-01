@@ -1,0 +1,7 @@
+{
+  "name": "CS1 Companion - GIU Engineering",
+  "description": "Interactive learning environment for Computer Science 1 at German International University, featuring visual algorithm tracing, interactive labs, Socratic AI tutoring, and parent co-study mode.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
