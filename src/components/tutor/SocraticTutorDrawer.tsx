@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { askSocraticTutor } from '../../services/tutorApi';
+import { askSocraticTutor, generateTopicAwareFallback } from '../../services/tutorApi';
+import { getStudentDiagnostics, loadMasteryRecords } from '../../services/masteryStorage';
 import { Bot, Send, X, Sparkles, MessageSquare, AlertCircle, RefreshCw } from 'lucide-react';
 
 interface TutorMessage {
@@ -18,7 +19,7 @@ interface SocraticTutorDrawerProps {
     exerciseContext?: any;
     attemptCount?: number;
     studentCode?: string;
-    recentMistakes?: string;
+    recentMistakes?: string[];
   };
 }
 
@@ -31,7 +32,7 @@ export const SocraticTutorDrawer: React.FC<SocraticTutorDrawerProps> = ({
     {
       id: 'init-1',
       sender: 'tutor',
-      text: `Hello! I am your GIU CS1 Socratic Tutor. I'm here to help you reason through algorithmic thinking, trace tables, and loops. What part of the concept or exercise would you like to explore together?`,
+      text: `Hello! I am your GIU CS1 Socratic Tutor. I'm here to help you reason through algorithmic thinking, variables, conditions, and loops. What part of the concept or exercise would you like to explore together?`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -73,16 +74,39 @@ export const SocraticTutorDrawer: React.FC<SocraticTutorDrawerProps> = ({
     setInputText('');
     setIsLoading(true);
 
+    const diagnostics = getStudentDiagnostics();
+    const records = loadMasteryRecords();
+    const masteredObjectives: string[] = [];
+    const demonstratedStrengths: string[] = [];
+
+    Object.values(records).forEach((r) => {
+      if (r.level === 'MASTERED') {
+        demonstratedStrengths.push(r.lessonId);
+      }
+      if (r.objectiveEvidence) {
+        Object.values(r.objectiveEvidence).forEach((oe) => {
+          if (oe.mastered) masteredObjectives.push(oe.objectiveId);
+        });
+      }
+    });
+
+    const tutorPayload = {
+      message: query,
+      topic: context.topic,
+      lessonTitle: context.lessonTitle,
+      exerciseContext: context.exerciseContext,
+      attemptCount: context.attemptCount || 1,
+      studentCode: context.studentCode,
+      recentMistakes: diagnostics.actuallyEncounteredMisconceptions,
+      masteredObjectives,
+      demonstratedStrengths,
+      totalPreviousAttempts: diagnostics.totalAttempts,
+      totalHintsUsed: diagnostics.totalHintsUsed,
+      prerequisitesMet: true,
+    };
+
     try {
-      const reply = await askSocraticTutor({
-        message: query,
-        topic: context.topic,
-        lessonTitle: context.lessonTitle,
-        exerciseContext: context.exerciseContext,
-        attemptCount: context.attemptCount || 1,
-        studentCode: context.studentCode,
-        recentMistakes: context.recentMistakes,
-      });
+      const reply = await askSocraticTutor(tutorPayload);
 
       const tutorMsg: TutorMessage = {
         id: (Date.now() + 1).toString(),
@@ -93,12 +117,13 @@ export const SocraticTutorDrawer: React.FC<SocraticTutorDrawerProps> = ({
 
       setMessages((prev) => [...prev, tutorMsg]);
     } catch {
+      const fallbackReply = generateTopicAwareFallback(tutorPayload);
       setMessages((prev) => [
         ...prev,
         {
           id: (Date.now() + 1).toString(),
           sender: 'tutor',
-          text: `Let's inspect the variables line by line. What is the value of your counter variable just before the while condition evaluates?`,
+          text: fallbackReply,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
@@ -132,7 +157,8 @@ export const SocraticTutorDrawer: React.FC<SocraticTutorDrawerProps> = ({
 
         <button
           onClick={onClose}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+          aria-label="Close tutor drawer"
+          className="p-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center active:scale-95"
         >
           <X className="w-5 h-5" />
         </button>
@@ -145,7 +171,7 @@ export const SocraticTutorDrawer: React.FC<SocraticTutorDrawerProps> = ({
       </div>
 
       {/* Messages Feed */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
+      <div className="flex-1 overflow-y-auto p-3.5 sm:p-4 space-y-3.5">
         {messages.map((m) => (
           <div
             key={m.id}
@@ -154,9 +180,9 @@ export const SocraticTutorDrawer: React.FC<SocraticTutorDrawerProps> = ({
             }`}
           >
             <div
-              className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-xs sm:text-sm leading-relaxed ${
+              className={`max-w-[88%] sm:max-w-[85%] rounded-2xl px-4 py-2.5 text-xs sm:text-sm leading-relaxed ${
                 m.sender === 'student'
-                  ? 'bg-indigo-600 text-white font-medium rounded-tr-none'
+                  ? 'bg-indigo-600 text-white font-medium rounded-tr-none shadow-sm'
                   : 'bg-slate-950 text-slate-200 border border-slate-800 rounded-tl-none font-sans'
               }`}
             >
@@ -167,8 +193,8 @@ export const SocraticTutorDrawer: React.FC<SocraticTutorDrawerProps> = ({
         ))}
 
         {isLoading && (
-          <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl w-fit text-xs text-indigo-400 animate-pulse">
-            <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Thinking through your question...
+          <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 px-3.5 py-2.5 rounded-xl w-fit text-xs text-indigo-400 animate-pulse">
+            <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" /> Thinking through your question...
           </div>
         )}
 
@@ -176,28 +202,28 @@ export const SocraticTutorDrawer: React.FC<SocraticTutorDrawerProps> = ({
       </div>
 
       {/* Suggested Quick Socratic Prompts */}
-      <div className="px-4 py-2 bg-slate-950/60 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto text-[11px]">
+      <div className="px-3.5 py-2 bg-slate-950/60 border-t border-slate-800/80 flex items-center gap-2 overflow-x-auto no-scrollbar text-xs">
         <button
           onClick={() => handleSendMessage('Why did my loop test fail on the boundary?')}
-          className="whitespace-nowrap px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors"
+          className="whitespace-nowrap px-3 py-1.5 rounded-full bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors min-h-[36px] flex items-center active:scale-95"
         >
           Check boundary test
         </button>
         <button
           onClick={() => handleSendMessage('How does the accumulator change on iteration 1?')}
-          className="whitespace-nowrap px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors"
+          className="whitespace-nowrap px-3 py-1.5 rounded-full bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors min-h-[36px] flex items-center active:scale-95"
         >
           Accumulator trace
         </button>
         <button
           onClick={() => handleSendMessage('Help me break this problem into 3 small steps')}
-          className="whitespace-nowrap px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors"
+          className="whitespace-nowrap px-3 py-1.5 rounded-full bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors min-h-[36px] flex items-center active:scale-95"
         >
           Step breakdown
         </button>
       </div>
 
-      {/* Input Field */}
+      {/* Input Field - min 44px touch target & iOS auto-zoom prevention */}
       <div className="p-3 bg-slate-950 border-t border-slate-800 flex items-center gap-2">
         <input
           type="text"
@@ -207,12 +233,13 @@ export const SocraticTutorDrawer: React.FC<SocraticTutorDrawerProps> = ({
             if (e.key === 'Enter') handleSendMessage();
           }}
           placeholder="Ask a question about this step..."
-          className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 min-h-[44px]"
         />
         <button
           onClick={() => handleSendMessage()}
           disabled={!inputText.trim() || isLoading}
-          className="p-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:pointer-events-none text-white transition-colors"
+          aria-label="Send message"
+          className="p-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:pointer-events-none text-white transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0 active:scale-95 shadow"
         >
           <Send className="w-4 h-4" />
         </button>

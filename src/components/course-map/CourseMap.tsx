@@ -71,22 +71,22 @@ export const CourseMap: React.FC<CourseMapProps> = ({ onSelectLesson }) => {
                 </span>
               </div>
 
-              <div className="flex items-center gap-2 overflow-x-auto pb-2">
+              <div className="flex items-center gap-2 overflow-x-auto pb-2 no-scrollbar">
                 {flow.chain.map((node, nodeIdx) => {
                   const isAvailable = nodeIdx <= flow.activeUpTo;
                   return (
                     <React.Fragment key={nodeIdx}>
                       <div
-                        className={`px-3 py-2 rounded-xl border text-xs font-semibold shrink-0 flex items-center gap-2 transition-all ${
+                        className={`px-3.5 py-2.5 rounded-xl border text-xs font-semibold shrink-0 flex items-center gap-2 transition-all min-h-[42px] ${
                           isAvailable
                             ? 'bg-indigo-950/60 border-indigo-500 text-indigo-200 shadow'
                             : 'bg-slate-950/60 border-slate-800 text-slate-500 opacity-60'
                         }`}
                       >
                         {isAvailable ? (
-                          <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
                         ) : (
-                          <Lock className="w-3 h-3 text-slate-600" />
+                          <Lock className="w-3.5 h-3.5 text-slate-600 shrink-0" />
                         )}
                         <span>{node}</span>
                       </div>

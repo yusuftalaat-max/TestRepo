@@ -37,7 +37,7 @@ export default function App() {
     exerciseContext?: any;
     attemptCount?: number;
     studentCode?: string;
-    recentMistakes?: string;
+    recentMistakes?: string[];
   }>({
     topic: 'Computer Science 1',
     lessonTitle: selectedLesson.title,
@@ -57,18 +57,16 @@ export default function App() {
     allLessons.find((les) => !masteryRecords[les.id] || masteryRecords[les.id].level === 'NOT_STARTED') ||
     allLessons[0];
 
-  // Determine "What should I review?" (Topics with NEEDS_REVIEW or low accuracy)
-  const reviewLessonCandidate =
-    allLessons.find((les) => masteryRecords[les.id]?.level === 'NEEDS_REVIEW') ||
-    allLessons.find((les) => les.id === 'les-7') ||
-    allLessons[1];
+  // Determine "What should I review?" based ONLY on actual student behavior
+  const needsReviewLesson = allLessons.find((les) => masteryRecords[les.id]?.level === 'NEEDS_REVIEW');
+  const reviewLessonCandidate = needsReviewLesson || selectedLesson;
 
   const handleOpenTutorWithContext = (context: any) => {
     setTutorContext((prev) => ({
       ...prev,
       ...context,
-      topic: selectedLesson.title,
-      lessonTitle: selectedLesson.title,
+      topic: context.topic || selectedLesson.title,
+      lessonTitle: context.lessonTitle || context.problemTitle || context.title || selectedLesson.title,
     }));
     setIsTutorOpen(true);
   };
@@ -92,7 +90,7 @@ export default function App() {
   });
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans overflow-x-hidden w-full selection:bg-indigo-500 selection:text-white">
       {/* Top Main Navigation Bar */}
       <Navbar
         activeTab={activeTab}
@@ -105,21 +103,21 @@ export default function App() {
         totalTopics={allLessons.length}
       />
 
-      {/* Main Content Workspace */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8">
+      {/* Main Content Workspace - Responsive padding & safe bottom clearance for mobile nav */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-8 pb-24 lg:pb-8">
         {/* ==================== TAB 1: LEARN ==================== */}
         {activeTab === 'LEARN' && (
-          <div className="space-y-8">
+          <div className="space-y-6 sm:space-y-8">
             {/* Student Home 3-Question Decision Compass */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
               {/* Question 1: What should I learn next? */}
               <div
                 onClick={() => setSelectedLesson(nextLessonCandidate)}
-                className="bg-slate-900 border border-slate-800 hover:border-indigo-500/80 rounded-2xl p-5 shadow-xl cursor-pointer transition-all hover:-translate-y-1 flex flex-col justify-between group"
+                className="bg-slate-900 border border-slate-800 hover:border-indigo-500/80 rounded-2xl p-4 sm:p-5 shadow-xl cursor-pointer transition-all hover:-translate-y-1 active:scale-[0.99] flex flex-col justify-between group min-h-[140px]"
               >
                 <div>
                   <div className="flex items-center gap-2 mb-2 text-indigo-400 text-xs font-bold uppercase tracking-wider">
-                    <Sparkles className="w-4 h-4" /> What Should I Learn Next?
+                    <Sparkles className="w-4 h-4 shrink-0" /> What Should I Learn Next?
                   </div>
                   <strong className="text-base text-slate-100 block group-hover:text-indigo-300 transition-colors">
                     {nextLessonCandidate.title}
@@ -137,21 +135,27 @@ export default function App() {
               {/* Question 2: What should I review? */}
               <div
                 onClick={() => setSelectedLesson(reviewLessonCandidate)}
-                className="bg-slate-900 border border-slate-800 hover:border-rose-500/80 rounded-2xl p-5 shadow-xl cursor-pointer transition-all hover:-translate-y-1 flex flex-col justify-between group"
+                className={`bg-slate-900 border rounded-2xl p-4 sm:p-5 shadow-xl cursor-pointer transition-all hover:-translate-y-1 active:scale-[0.99] flex flex-col justify-between group min-h-[140px] ${
+                  needsReviewLesson ? 'border-rose-500/80 hover:border-rose-400' : 'border-slate-800 hover:border-slate-700'
+                }`}
               >
                 <div>
-                  <div className="flex items-center gap-2 mb-2 text-rose-400 text-xs font-bold uppercase tracking-wider">
-                    <AlertTriangle className="w-4 h-4" /> What Should I Review?
+                  <div className={`flex items-center gap-2 mb-2 text-xs font-bold uppercase tracking-wider ${
+                    needsReviewLesson ? 'text-rose-400' : 'text-slate-400'
+                  }`}>
+                    <AlertTriangle className="w-4 h-4 shrink-0" /> What Should I Review?
                   </div>
-                  <strong className="text-base text-slate-100 block group-hover:text-rose-300 transition-colors">
-                    {reviewLessonCandidate.title}
+                  <strong className="text-base text-slate-100 block group-hover:text-indigo-300 transition-colors">
+                    {needsReviewLesson ? needsReviewLesson.title : 'No Review Flags Logged'}
                   </strong>
                   <p className="text-xs text-slate-400 mt-1 line-clamp-2">
-                    Diagnosed off-by-one errors and loop invariants require reinforcement.
+                    {needsReviewLesson
+                      ? 'Recorded exercise performance indicates this topic needs reinforcement.'
+                      : 'Clean baseline: no review flags recorded. Complete lesson exercises to test understanding.'}
                   </p>
                 </div>
-                <div className="flex items-center justify-between pt-3 mt-3 border-t border-slate-800/80 text-xs font-semibold text-rose-400">
-                  <span>Re-trace Loop Mechanics</span>
+                <div className="flex items-center justify-between pt-3 mt-3 border-t border-slate-800/80 text-xs font-semibold text-slate-400">
+                  <span>{needsReviewLesson ? 'Review Topic' : 'Select Lesson'}</span>
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </div>
               </div>
@@ -159,11 +163,11 @@ export default function App() {
               {/* Question 3: How am I progressing? */}
               <div
                 onClick={() => setActiveTab('COURSE_MAP')}
-                className="bg-slate-900 border border-slate-800 hover:border-emerald-500/80 rounded-2xl p-5 shadow-xl cursor-pointer transition-all hover:-translate-y-1 flex flex-col justify-between group"
+                className="bg-slate-900 border border-slate-800 hover:border-emerald-500/80 rounded-2xl p-4 sm:p-5 shadow-xl cursor-pointer transition-all hover:-translate-y-1 active:scale-[0.99] flex flex-col justify-between group min-h-[140px]"
               >
                 <div>
                   <div className="flex items-center gap-2 mb-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
-                    <CheckCircle2 className="w-4 h-4" /> How Am I Progressing?
+                    <CheckCircle2 className="w-4 h-4 shrink-0" /> How Am I Progressing?
                   </div>
                   <div className="flex items-baseline gap-2">
                     <span className="text-3xl font-extrabold font-mono text-emerald-400">
@@ -182,23 +186,23 @@ export default function App() {
               </div>
             </div>
 
-            {/* Quick Lesson Switcher Horizontal Strip */}
-            <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 flex items-center gap-3 overflow-x-auto">
-              <span className="text-xs uppercase font-bold text-slate-500 tracking-wider shrink-0">
-                Curriculum Lessons:
+            {/* Quick Lesson Switcher Horizontal Strip - Touch Friendly */}
+            <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-3 sm:p-4 flex items-center gap-2 sm:gap-3 overflow-x-auto no-scrollbar">
+              <span className="text-xs uppercase font-bold text-slate-500 tracking-wider shrink-0 hidden xs:inline">
+                Lessons:
               </span>
               <div className="flex items-center gap-2">
                 {allLessons.map((les) => (
                   <button
                     key={les.id}
                     onClick={() => setSelectedLesson(les)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border ${
+                    className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border min-h-[38px] flex items-center shrink-0 ${
                       selectedLesson.id === les.id
                         ? 'bg-indigo-600 border-indigo-500 text-white shadow'
                         : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    #{les.number}: {les.title}
+                    #{les.number}: {les.title.split('&')[0].trim()}
                   </button>
                 ))}
               </div>

@@ -1,6 +1,6 @@
-import { MasteryLevel, StudentMasteryRecord } from '../types/curriculum';
+import { MasteryLevel, StudentMasteryRecord, ObjectiveEvidence, ObjectiveCategory } from '../types/curriculum';
 
-const STORAGE_KEY = 'cs1_companion_mastery_v1';
+const STORAGE_KEY = 'cs1_companion_mastery_v2';
 
 export function loadMasteryRecords(): Record<string, StudentMasteryRecord> {
   try {
@@ -20,14 +20,24 @@ export function saveMasteryRecords(records: Record<string, StudentMasteryRecord>
   }
 }
 
+export function resetAllMasteryData(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (e) {
+    console.error('Failed to reset mastery data:', e);
+  }
+}
+
 export function recordExerciseAttempt(
   lessonId: string,
   isCorrect: boolean,
   hintsUsed: number,
+  objectiveId?: string,
+  cognitiveCategory?: ObjectiveCategory,
   misconceptionId?: string
 ): StudentMasteryRecord {
   const records = loadMasteryRecords();
-  const current = records[lessonId] || {
+  const current: StudentMasteryRecord = records[lessonId] || {
     lessonId,
     level: 'NOT_STARTED',
     totalAttempts: 0,
@@ -35,6 +45,7 @@ export function recordExerciseAttempt(
     hintUsageCount: 0,
     lastStudiedAt: new Date().toISOString(),
     encounteredMisconceptions: [],
+    objectiveEvidence: {},
   };
 
   current.totalAttempts += 1;
@@ -46,16 +57,65 @@ export function recordExerciseAttempt(
     current.encounteredMisconceptions.push(misconceptionId);
   }
 
-  // Calculate mastery level based on rigorous evidence
-  // Mastery requires at least 3 attempts, >= 80% accuracy, and low hint usage
-  const accuracy = current.totalAttempts > 0 ? current.successfulAttempts / current.totalAttempts : 0;
-  
-  if (current.totalAttempts >= 3 && accuracy >= 0.8 && current.hintUsageCount <= 2) {
+  // Update objective-level evidence if objectiveId is specified
+  if (objectiveId) {
+    if (!current.objectiveEvidence) {
+      current.objectiveEvidence = {};
+    }
+    const evidence: ObjectiveEvidence = current.objectiveEvidence[objectiveId] || {
+      objectiveId,
+      recallPassed: false,
+      tracingPassed: false,
+      applicationPassed: false,
+      problemSolvingPassed: false,
+      totalAttempts: 0,
+      successfulAttempts: 0,
+      mastered: false,
+    };
+
+    evidence.totalAttempts += 1;
+    if (isCorrect) {
+      evidence.successfulAttempts += 1;
+      if (cognitiveCategory === 'RECALL') evidence.recallPassed = true;
+      if (cognitiveCategory === 'TRACING') evidence.tracingPassed = true;
+      if (cognitiveCategory === 'APPLICATION') evidence.applicationPassed = true;
+      if (cognitiveCategory === 'PROBLEM_SOLVING') evidence.problemSolvingPassed = true;
+    }
+
+    // STRICT PEDAGOGICAL MASTERY RULE:
+    // Recognition (Recall) alone NEVER establishes mastery.
+    // Mastery requires validated evidence across at least TWO distinct cognitive categories,
+    // including either Tracing or Application/Problem Solving, with overall accuracy >= 75%.
+    const categoriesPassed = [
+      evidence.recallPassed,
+      evidence.tracingPassed,
+      evidence.applicationPassed,
+      evidence.problemSolvingPassed,
+    ].filter(Boolean).length;
+
+    const rigorousApplicationOrTrace = evidence.tracingPassed || evidence.applicationPassed || evidence.problemSolvingPassed;
+    const accuracy = evidence.totalAttempts > 0 ? evidence.successfulAttempts / evidence.totalAttempts : 0;
+
+    evidence.mastered = categoriesPassed >= 2 && rigorousApplicationOrTrace && accuracy >= 0.75;
+    current.objectiveEvidence[objectiveId] = evidence;
+  }
+
+  // Determine overall lesson mastery level
+  const totalObjCount = current.objectiveEvidence ? Object.keys(current.objectiveEvidence).length : 0;
+  const masteredObjCount = current.objectiveEvidence
+    ? Object.values(current.objectiveEvidence).filter((o) => o.mastered).length
+    : 0;
+
+  const overallAccuracy = current.totalAttempts > 0 ? current.successfulAttempts / current.totalAttempts : 0;
+
+  if (totalObjCount > 0 && masteredObjCount === totalObjCount && current.hintUsageCount <= totalObjCount * 2) {
     current.level = 'MASTERED';
-  } else if (current.totalAttempts >= 2 && accuracy < 0.5) {
+  } else if (current.totalAttempts >= 3 && overallAccuracy < 0.45) {
     current.level = 'NEEDS_REVIEW';
-  } else if (current.totalAttempts >= 1) {
-    current.level = current.successfulAttempts > 0 ? 'PRACTICING' : 'LEARNING';
+  } else if (current.successfulAttempts > 0) {
+    current.level = 'PRACTICING';
+  } else {
+    current.level = 'LEARNING';
   }
 
   records[lessonId] = current;
@@ -74,85 +134,57 @@ export function markLessonStudied(lessonId: string): void {
       hintUsageCount: 0,
       lastStudiedAt: new Date().toISOString(),
       encounteredMisconceptions: [],
+      objectiveEvidence: {},
     };
     saveMasteryRecords(records);
   }
 }
 
+// Clean state for fresh student: ZERO fake/pre-seeded records
 function getDefaultRecords(): Record<string, StudentMasteryRecord> {
-  // Pre-seed initial state so UI is informative on first launch
-  return {
-    'les-1': {
-      lessonId: 'les-1',
-      level: 'PRACTICING',
-      totalAttempts: 2,
-      successfulAttempts: 2,
-      hintUsageCount: 1,
-      lastStudiedAt: new Date().toISOString(),
-      encounteredMisconceptions: [],
-    },
-    'les-2': {
-      lessonId: 'les-2',
-      level: 'LEARNING',
-      totalAttempts: 1,
-      successfulAttempts: 1,
-      hintUsageCount: 0,
-      lastStudiedAt: new Date().toISOString(),
-      encounteredMisconceptions: [],
-    },
-    'les-3': {
-      lessonId: 'les-3',
-      level: 'LEARNING',
-      totalAttempts: 1,
-      successfulAttempts: 0,
-      hintUsageCount: 2,
-      lastStudiedAt: new Date().toISOString(),
-      encounteredMisconceptions: ['misc-mod-as-division'],
-    },
-    'les-4': {
-      lessonId: 'les-4',
-      level: 'NOT_STARTED',
-      totalAttempts: 0,
-      successfulAttempts: 0,
-      hintUsageCount: 0,
-      lastStudiedAt: new Date().toISOString(),
-      encounteredMisconceptions: [],
-    },
-    'les-5': {
-      lessonId: 'les-5',
-      level: 'NOT_STARTED',
-      totalAttempts: 0,
-      successfulAttempts: 0,
-      hintUsageCount: 0,
-      lastStudiedAt: new Date().toISOString(),
-      encounteredMisconceptions: [],
-    },
-    'les-6': {
-      lessonId: 'les-6',
-      level: 'NOT_STARTED',
-      totalAttempts: 0,
-      successfulAttempts: 0,
-      hintUsageCount: 0,
-      lastStudiedAt: new Date().toISOString(),
-      encounteredMisconceptions: [],
-    },
-    'les-7': {
-      lessonId: 'les-7',
-      level: 'NEEDS_REVIEW',
-      totalAttempts: 3,
-      successfulAttempts: 1,
-      hintUsageCount: 4,
-      lastStudiedAt: new Date().toISOString(),
-      encounteredMisconceptions: ['misc-off-by-one-inclusive'],
-    },
-    'les-8': {
-      lessonId: 'les-8',
-      level: 'LEARNING',
-      totalAttempts: 1,
-      successfulAttempts: 0,
-      hintUsageCount: 2,
-      lastStudiedAt: new Date().toISOString(),
-      encounteredMisconceptions: ['misc-loop-scope'],
+  return {};
+}
+
+// Diagnostic helper: Only returns real, recorded student facts
+export function getStudentDiagnostics(): {
+  hasRecordedData: boolean;
+  totalAttempts: number;
+  successfulAttempts: number;
+  overallAccuracyPct: number;
+  totalHintsUsed: number;
+  actuallyEncounteredMisconceptions: string[];
+  masteredObjectivesCount: number;
+  totalTrackedObjectivesCount: number;
+} {
+  const records = loadMasteryRecords();
+  const recordsList = Object.values(records);
+
+  const totalAttempts = recordsList.reduce((acc, r) => acc + r.totalAttempts, 0);
+  const successfulAttempts = recordsList.reduce((acc, r) => acc + r.successfulAttempts, 0);
+  const totalHintsUsed = recordsList.reduce((acc, r) => acc + r.hintUsageCount, 0);
+
+  const misconceptionsSet = new Set<string>();
+  let masteredObjectivesCount = 0;
+  let totalTrackedObjectivesCount = 0;
+
+  recordsList.forEach((r) => {
+    r.encounteredMisconceptions.forEach((m) => misconceptionsSet.add(m));
+    if (r.objectiveEvidence) {
+      Object.values(r.objectiveEvidence).forEach((o) => {
+        totalTrackedObjectivesCount += 1;
+        if (o.mastered) masteredObjectivesCount += 1;
+      });
     }
+  });
+
+  return {
+    hasRecordedData: totalAttempts > 0,
+    totalAttempts,
+    successfulAttempts,
+    overallAccuracyPct: totalAttempts > 0 ? Math.round((successfulAttempts / totalAttempts) * 100) : 0,
+    totalHintsUsed,
+    actuallyEncounteredMisconceptions: Array.from(misconceptionsSet),
+    masteredObjectivesCount,
+    totalTrackedObjectivesCount,
   };
 }

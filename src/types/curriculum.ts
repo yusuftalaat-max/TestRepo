@@ -2,6 +2,8 @@ export type MasteryLevel = 'NOT_STARTED' | 'LEARNING' | 'PRACTICING' | 'NEEDS_RE
 
 export type ExerciseDifficulty = 'FOUNDATION' | 'APPLICATION' | 'GIU_LEVEL' | 'CHALLENGE';
 
+export type ObjectiveCategory = 'RECALL' | 'TRACING' | 'APPLICATION' | 'PROBLEM_SOLVING';
+
 export type ExerciseType =
   | 'MULTIPLE_CHOICE'
   | 'PREDICT_OUTPUT'
@@ -10,6 +12,12 @@ export type ExerciseType =
   | 'FILL_BLANK_CODE'
   | 'BINARY_CONVERSION'
   | 'TRUTH_TABLE';
+
+export interface LearningObjective {
+  id: string;
+  statement: string;
+  category: ObjectiveCategory;
+}
 
 export interface CodeTraceStep {
   line: number;
@@ -41,7 +49,7 @@ export interface TraceableAlgorithm {
 
 export interface Misconception {
   id: string;
-  triggerCondition: string; // e.g., 'entered N instead of N-1' or 'chose option B'
+  triggerCondition: string; // e.g., 'chose option A' or 'off-by-one'
   name: string;
   description: string;
   remedyHint: string;
@@ -53,6 +61,8 @@ export interface Exercise {
   lessonId: string;
   title: string;
   objective: string;
+  objectiveId?: string; // Links directly to specific LearningObjective
+  cognitiveLevel?: ObjectiveCategory; // 'RECALL' | 'TRACING' | 'APPLICATION' | 'PROBLEM_SOLVING'
   difficulty: ExerciseDifficulty;
   type: ExerciseType;
   question: string;
@@ -63,33 +73,27 @@ export interface Exercise {
     headers: string[];
     rows: { inputs: (string | number)[]; expectedOutputs: (string | number)[] }[];
   };
-  hints: [string, string, string]; // Hint 1 (Guiding question), Hint 2 (Concept pointer), Hint 3 (Step breakdown)
+  hints: string[]; // Progressive Socratic hints (Hint 1 guiding question, Hint 2 concept pointer, Hint 3 breakdown)
   explanation: string;
   misconceptions: Misconception[];
 }
 
+// Pedagogical progression strictly following:
+// intuition -> concrete example -> student prediction -> formal concept -> worked example -> independent application
 export type LessonStage =
-  | 'CONCEPT'
   | 'INTUITION'
-  | 'DEMONSTRATION'
-  | 'GUIDED_EXAMPLE'
+  | 'CONCRETE_EXAMPLE'
   | 'PREDICTION'
-  | 'PRACTICE'
-  | 'FEEDBACK'
-  | 'CHALLENGE'
-  | 'MASTERY_CHECK';
+  | 'FORMAL_CONCEPT'
+  | 'WORKED_EXAMPLE'
+  | 'INDEPENDENT_APPLICATION';
 
 export interface LessonContent {
-  conceptSummary: string;
-  keyTerminology: { term: string; definition: string }[];
-  intuitionWhy: string;
-  demonstrationNotes: string;
-  algorithmPresetId?: string; // Links to interactive visualizer preset
-  guidedExample: {
-    problemStatement: string;
-    thoughtProcess: string[];
-    pseudocode: string[];
-    tracingTable: { step: number; line: string; vars: string; output: string }[];
+  intuitionWhy: string; // Everyday intuitive scenario before jargon
+  concreteExample: {
+    scenario: string;
+    walkthrough: string[];
+    keyObservation: string;
   };
   predictionChallenge: {
     code: string[];
@@ -97,6 +101,16 @@ export interface LessonContent {
     options: string[];
     correctIndex: number;
     explanation: string;
+  };
+  conceptSummary: string; // Formal definitions and mathematical/algorithmic properties
+  keyTerminology: { term: string; definition: string }[];
+  algorithmPresetId?: string; // Links to interactive visualizer preset
+  demonstrationNotes: string;
+  guidedExample: {
+    problemStatement: string;
+    thoughtProcess: string[];
+    pseudocode: string[];
+    tracingTable: { step: number; line: string; vars: string; output: string }[];
   };
   commonMistakes: { mistake: string; whyWrong: string; correction: string }[];
   teachTogetherNotes: {
@@ -115,6 +129,7 @@ export interface Lesson {
   title: string;
   subtitle: string;
   learningObjectives: string[];
+  objectives: LearningObjective[]; // Formal structured learning objectives
   prerequisites: string[];
   estimatedMinutes: number;
   content: LessonContent;
@@ -144,6 +159,7 @@ export interface ProblemLabItem {
   id: string;
   title: string;
   difficulty: 'FOUNDATION' | 'INTERMEDIATE' | 'GIU_EXAM';
+  category: 'SEQUENCE' | 'VARIABLES' | 'CONDITIONS' | 'COUNTERS' | 'ACCUMULATORS' | 'LOOPS' | 'INVARIANTS';
   description: string;
   inputSpecification: string;
   outputSpecification: string;
@@ -155,6 +171,17 @@ export interface ProblemLabItem {
   steps: ProblemLabStep[];
 }
 
+export interface ObjectiveEvidence {
+  objectiveId: string;
+  recallPassed: boolean;
+  tracingPassed: boolean;
+  applicationPassed: boolean;
+  problemSolvingPassed: boolean;
+  totalAttempts: number;
+  successfulAttempts: number;
+  mastered: boolean;
+}
+
 export interface StudentMasteryRecord {
   lessonId: string;
   level: MasteryLevel;
@@ -163,5 +190,6 @@ export interface StudentMasteryRecord {
   hintUsageCount: number;
   lastStudiedAt: string;
   encounteredMisconceptions: string[];
+  objectiveEvidence?: Record<string, ObjectiveEvidence>;
   quizScore?: number;
 }
